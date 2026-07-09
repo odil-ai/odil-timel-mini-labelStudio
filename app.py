@@ -20,6 +20,7 @@ import zipfile
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from dotenv import load_dotenv
 
@@ -109,6 +110,11 @@ def create_app():
         template_folder='templates'
     )
     app.config.from_object(Config)
+
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1, x_proto=1, x_host=1, x_prefix=1
+    )
 
     app.jinja_env.globals["BRANCH_LABELS"] = {
         "timel_character": "Personnage",
