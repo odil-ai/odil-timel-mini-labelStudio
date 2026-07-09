@@ -52,6 +52,7 @@ Two files are recognized, both ignored by git (`.gitignore`) since they hold sec
 | `IMAGE_ENDPOINT` | Base URL of the IIIF server serving images (new filename + `/full/full/0/default.jpg`) | `https://iiif.chartes.psl.eu/images/ahloma_images/` |
 | `EXPORT_SNAPSHOT` | Filename for the decisions CSV export | `export_snapshot.csv` |
 | `EXPORT_LOG` | Filename for the action log CSV export | `export_log.csv` |
+| `APP_PREFIX` | URL path prefix the app is mounted under behind a reverse proxy, e.g. `odil-timel-labelstudio` (see [DEPLOY.md](DEPLOY.md#8-nginx-reverse-proxy)) | _(empty : mounted at the domain root)_ |
 
 A variable that is present but left empty (e.g. `DB_PATH=`) falls back to its default instead of resolving to an empty string.
 

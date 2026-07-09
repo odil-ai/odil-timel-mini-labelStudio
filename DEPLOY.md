@@ -63,6 +63,7 @@ Edit `/opt/timel-annotation-studio/.env` and set at least:
 | `DB_PATH` | Absolute path recommended in production, e.g. `/opt/timel-annotation-studio/data/timel_reconcile.sqlite`. |
 | `TAXO_PATH` / `CSV_TSV_PATH` / `FILENAME_MAP_PATH` | Verify these input data files were deployed under `data/` (they're not committed if large : copy them onto the server separately if so). |
 | `IMAGES_ROOT` | Optional; only needed if some images must be served locally instead of via `IMAGE_ENDPOINT`. |
+| `APP_PREFIX` | Only needed if the app is mounted under a sub-path (e.g. `https://dev.chartes.psl.eu/odil-timel-labelstudio/` instead of the domain root). Set to that path, e.g. `odil-timel-labelstudio` — must match the `X-Forwarded-Prefix` header set by nginx (see [§8](#8-nginx-reverse-proxy)). |
 
 See the [Configuration](README.md#configuration) section of the README for
 the full variable reference and defaults.
@@ -161,6 +162,28 @@ sudo ln -s /etc/nginx/sites-available/timel-annotation-studio /etc/nginx/sites-e
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+### Mounting under a sub-path (shared vhost)
+
+If the app is served under a path on a shared domain instead of its own
+`server_name` (e.g. `https://dev.chartes.psl.eu/odil-timel-labelstudio/`),
+use a `location` block for that prefix and forward it via
+`X-Forwarded-Prefix` so Flask (`ProxyFix`) generates correct URLs — and set
+the matching `APP_PREFIX` in `.env` (see [§5](#5-environment-variables-to-fill-in))
+so `static/app.js` prefixes its own API calls the same way:
+
+```nginx
+location /odil-timel-labelstudio/ {
+    proxy_pass http://127.0.0.1:8000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Prefix /odil-timel-labelstudio;
+}
+```
+
+With `APP_PREFIX=odil-timel-labelstudio` in `.env`.
 
 Put TLS in front of this (e.g. `certbot --nginx`) before exposing the app
 publicly : `APP_PASSWORD` is a single shared secret sent over plain HTTP

@@ -52,6 +52,26 @@ from services.data import (  # noqa: E402
 from services.db import db_load_all_decisions, db_upsert_and_log, init_db, reset_db  # noqa: E402
 
 
+def with_app_prefix(path: str) -> str:
+    """Prepend the configured ``APP_PREFIX`` to a root-relative path.
+
+    Mirrors ``withPrefix()`` in ``static/app.js``. Needed anywhere a
+    redirect target is built from a raw path (e.g. ``request.path``, or a
+    hardcoded ``"/correction"`` default) instead of via :func:`flask.url_for`
+    — ``url_for`` already accounts for the reverse-proxy prefix through
+    ``ProxyFix``/``SCRIPT_NAME``, but a raw path doesn't.
+
+    :param path: A root-relative path, e.g. ``"/correction"``.
+    :type path: str
+    :returns: The path with ``Config.APP_PREFIX`` prepended (unchanged if
+        the prefix isn't configured or ``path`` isn't root-relative).
+    :rtype: str
+    """
+    if not Config.APP_PREFIX or not path.startswith("/"):
+        return path
+    return Config.APP_PREFIX + path
+
+
 def login_required(view):
     """Redirect anonymous users to the login page for full HTML routes.
 
@@ -66,7 +86,7 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if not session.get("auth_ok"):
-            return redirect(url_for("login", next=request.path))
+            return redirect(url_for("login", next=with_app_prefix(request.path)))
         return view(*args, **kwargs)
 
     return wrapped
@@ -115,6 +135,8 @@ def create_app():
         app.wsgi_app,
         x_for=1, x_proto=1, x_host=1, x_prefix=1
     )
+
+    app.jinja_env.globals["APP_PREFIX"] = app.config["APP_PREFIX"]
 
     app.jinja_env.globals["BRANCH_LABELS"] = {
         "timel_character": "Personnage",
@@ -263,7 +285,7 @@ def create_app():
         """
         if session.get("auth_ok"):
             return redirect(url_for("correction"))
-        next_url = request.args.get("next", "/correction")
+        next_url = request.args.get("next", with_app_prefix("/correction"))
         return render_template("login.html", next=next_url, error=None)
 
     @app.post("/login")
@@ -278,7 +300,7 @@ def create_app():
         :rtype: flask.Response
         """
         pwd = (request.form.get("password") or "").strip()
-        next_url = request.form.get("next") or "/correction"
+        next_url = request.form.get("next") or with_app_prefix("/correction")
 
         if pwd == app.config["APP_PASSWORD"]:
             session["auth_ok"] = True

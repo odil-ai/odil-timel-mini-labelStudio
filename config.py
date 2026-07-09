@@ -14,6 +14,20 @@ instead of resolving to an empty string (which would crash things like
 import os
 
 
+def _normalize_prefix(raw: str) -> str:
+    """Normalize a configured URL prefix to a leading-slash, no-trailing-
+    slash form (or "" if unset), regardless of how it was written in the
+    environment (`"odil-timel-labelstudio"`, `"/odil-timel-labelstudio/"`, ...).
+
+    :param raw: Raw `APP_PREFIX` environment value.
+    :type raw: str
+    :returns: The normalized prefix, e.g. `"/odil-timel-labelstudio"`, or `""`.
+    :rtype: str
+    """
+    raw = (raw or "").strip().strip("/")
+    return f"/{raw}" if raw else ""
+
+
 class Config:
     """Flask configuration object, exposed as ``app.config`` after
     ``app.config.from_object(Config)`` in ``create_app()``.
@@ -58,3 +72,11 @@ class Config:
 
     EXPORT_LOG = os.environ.get("EXPORT_LOG") or "export_log.csv"
     """Filename used for the action log CSV inside the export ZIP."""
+
+    APP_PREFIX = _normalize_prefix(os.environ.get("APP_PREFIX"))
+    """URL path prefix the app is mounted under behind a reverse proxy,
+    e.g. `/odil-timel-labelstudio` (empty at the domain root, as in local
+    dev). Must match the `X-Forwarded-Prefix` header sent by the proxy
+    (consumed by `ProxyFix` for server-rendered URLs); used in templates to
+    inject `APP_PREFIX` as a JS global so `static/app.js` can prefix the
+    absolute API paths it builds itself (see `withPrefix()`)."""

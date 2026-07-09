@@ -1,5 +1,23 @@
 /* global anime */
 
+// -------------------- URL PREFIX --------------------
+// `APP_PREFIX` (e.g. "/odil-timel-labelstudio") is injected as a global by
+// base.html/login.html from the server-side APP_PREFIX config, so that
+// same-origin routes (API calls, redirects) still resolve correctly when
+// the app is served behind a reverse-proxy path prefix.
+/**
+ * Prepend the configured app prefix to a root-relative path.
+ *
+ * @param {string} path - A root-relative path/URL, e.g. "/api/taxo_search".
+ * @returns {string} The path with `APP_PREFIX` prepended (unchanged if the
+ *   prefix isn't configured or `path` isn't root-relative).
+ */
+function withPrefix(path) {
+    const prefix = (typeof APP_PREFIX !== "undefined" && APP_PREFIX) ? APP_PREFIX : "";
+    if (!prefix || typeof path !== "string" || !path.startsWith("/")) return path;
+    return prefix + path;
+}
+
 // -------------------- THEME --------------------
 (function themeInit() {
     const root = document.documentElement;
@@ -164,7 +182,7 @@ function toast(msg, ok = true) {
  */
 async function postJSON(url, data) {
     try {
-        const r = await fetch(url, {
+        const r = await fetch(withPrefix(url), {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(data),
@@ -372,7 +390,7 @@ function getExcludedJson() {
 async function fetchRow(cursor) {
     const params = getQueryParamsForCorrection();
     params.set("cursor", String(cursor));
-    const url = `/api/correction/row?${params.toString()}`;
+    const url = withPrefix(`/api/correction/row?${params.toString()}`);
     const r = await fetch(url);
     return await r.json();
 }
@@ -497,7 +515,7 @@ async function loadCursor(cursor) {
     }
     if (data.empty) {
         // Simple fallback: reload the page (rare case)
-        window.location.href = "/correction?" + getQueryParamsForCorrection().toString();
+        window.location.href = withPrefix("/correction?" + getQueryParamsForCorrection().toString());
         return;
     }
 
@@ -882,7 +900,7 @@ function mountCorrection() {
                 results.innerHTML = "";
                 return;
             }
-            const r = await fetch(`/api/taxo_search?q=${encodeURIComponent(q)}`);
+            const r = await fetch(withPrefix(`/api/taxo_search?q=${encodeURIComponent(q)}`));
             const data = await r.json().catch(() => []);
             renderResults(data);
         }, 140);
