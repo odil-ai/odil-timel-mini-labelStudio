@@ -17,7 +17,7 @@ sudo apt update
 sudo apt install -y python3 python3-venv python3-pip sqlite3 nginx supervisor git
 ```
 
-## 2. Go to /srv/webapps
+## 2. Go to /srv/webapp (dev only)
 
 ## 3. Get the code
 
@@ -57,11 +57,11 @@ Edit `/opt/timel-annotation-studio/.env` and set at least:
 
 | Variable | Notes |
 |---|---|
-| `SECRET_KEY` | Generate with `python3 -c "import secrets; print(secrets.token_hex(32))"`. Must **not** be left at `dev-secret` — the app refuses to start otherwise. |
+| `SECRET_KEY` | Generate with `python3 -c "import secrets; print(secrets.token_hex(32))"`. Must **not** be left at `dev-secret` : the app refuses to start otherwise. |
 | `APP_PASSWORD` | The shared password annotators use to log in. Required. |
 | `IMAGE_ENDPOINT` | IIIF server base URL, e.g. `https://iiif.chartes.psl.eu/images/ahloma_images/`. |
 | `DB_PATH` | Absolute path recommended in production, e.g. `/opt/timel-annotation-studio/data/timel_reconcile.sqlite`. |
-| `TAXO_PATH` / `CSV_TSV_PATH` / `FILENAME_MAP_PATH` | Verify these input data files were deployed under `data/` (they're not committed if large — copy them onto the server separately if so). |
+| `TAXO_PATH` / `CSV_TSV_PATH` / `FILENAME_MAP_PATH` | Verify these input data files were deployed under `data/` (they're not committed if large : copy them onto the server separately if so). |
 | `IMAGES_ROOT` | Optional; only needed if some images must be served locally instead of via `IMAGE_ENDPOINT`. |
 
 See the [Configuration](README.md#configuration) section of the README for
@@ -100,8 +100,8 @@ Create `/etc/supervisor/conf.d/timel-annotation-studio.conf`:
 
 ```ini
 [program:timel-annotation-studio]
-directory=/srv/webapps/timel-annotation-studio
-command=/srv/webapps/timel-annotation-studio/.venv/bin/gunicorn -w 4 -b 127.0.0.1:8000 wsgi:app
+directory=/srv/webapp/timel-annotation-studio
+command=/srv/webapp/timel-annotation-studio/.venv/bin/gunicorn -w 4 -b 127.0.0.1:8000 wsgi:app
 user=timel
 autostart=true
 autorestart=true
@@ -163,7 +163,7 @@ sudo systemctl reload nginx
 ```
 
 Put TLS in front of this (e.g. `certbot --nginx`) before exposing the app
-publicly — `APP_PASSWORD` is a single shared secret sent over plain HTTP
+publicly : `APP_PASSWORD` is a single shared secret sent over plain HTTP
 otherwise.
 
 ## 9. Cron backup script
