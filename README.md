@@ -43,8 +43,8 @@ Two files are recognized, both ignored by git (`.gitignore`) since they hold sec
 | Variable | Description | Default |
 |---|---|---|
 | `SECRET_KEY` | Flask session signing key | `dev-secret` (must be changed in prod) |
-| `APP_PASSWORD` | Single shared password gating access to the app | _(empty — required)_ |
-| `IMAGES_ROOT` | Root path to local images (optional fallback when `IMAGE_ENDPOINT`/the filename mapping doesn't cover an image) | _(empty — fallback disabled)_ |
+| `APP_PASSWORD` | Single shared password gating access to the app | _(empty : required)_ |
+| `IMAGES_ROOT` | Root path to local images (optional fallback when `IMAGE_ENDPOINT`/the filename mapping doesn't cover an image) | _(empty : fallback disabled)_ |
 | `TAXO_PATH` | Path to the taxonomy JSON file | `data/timel-taxonomy_enriched.json` |
 | `DB_PATH` | Path to the SQLite decisions database | `data/timel_reconcile.sqlite` |
 | `CSV_TSV_PATH` | Path to the input data file | `data/reconcile_timel_prepared.csv` |
