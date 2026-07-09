@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page">
+  <div class="page-head" data-anim="hero">
+    <div>
+      <h2>Tableau</h2>
+      <div class="muted">Filtrer + contrôler l’avancement.</div>
+    </div>
+  </div>
+
+  <details class="card" open data-anim="card">
+    <summary class="card-title summary"><i class="fa-solid fa-filter"></i> Filtres</summary>
+
+    <form method="get" class="form-grid">
+      <label>
+        Recherche
+        <input type="text" name="q" value="{{ filters.q }}" placeholder="orphan / reconciled / final / tm-id">
+      </label>
+
+      <label class="chipline">
+        <input type="checkbox" name="only_pending" value="1" {{ "checked" if filters.only_pending else "" }}>
+        Seulement non validés
+      </label>
+
+      <fieldset class="fieldset">
+        <legend>Confiance</legend>
+        <div class="chips">
+          {% for c in ["HIGH","MEDIUM","LOW","NONE"] %}
+            <label class="chip">
+              <input type="checkbox" name="conf" value="{{ c }}" {{ "checked" if c in filters.confs else "" }}>
+              {{ c }}
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend>Branche</legend>
+        <div class="chips">
+          {% for b in branches %}
+            <label class="chip">
+              <input type="checkbox" name="br" value="{{ b }}" {{ "checked" if b in filters.br else "" }}>
+              {{ BRANCH_LABELS.get(b, b) }}
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check"></i> Appliquer</button>
+        <a class="btn" href="{{ url_for('table') }}"><i class="fa-solid fa-rotate-left"></i> Reset</a>
+      </div>
+    </form>
+  </details>
+
+  <div class="card" data-anim="card">
+    <div class="card-title"><i class="fa-solid fa-table"></i> Résultats ({{ rows|length }})</div>
+
+    <div class="table-legend">
+      <div class="legend-group">
+        <span class="legend-group-title">Couleur de ligne —</span>
+        <span class="legend-item legend-validated"><span class="legend-swatch"></span> Validé</span>
+        <span class="legend-item legend-high"><span class="legend-swatch"></span> HIGH non validé</span>
+        <span class="legend-item legend-none"><span class="legend-swatch"></span> NONE non validé</span>
+        <span class="legend-item legend-neutral"><span class="legend-swatch"></span> LOW non validé</span>
+      </div>
+      <div class="legend-group">
+        <span class="legend-group-title">Niveau de confiance —</span>
+        <span class="legend-item"><code>HIGH</code> correspondance fiable (label préféré ou alternatif)</span>
+        <span class="legend-item"><code>LOW</code> correspondance incertaine (similarité faible)</span>
+        <span class="legend-item"><code>NONE</code> aucune correspondance trouvée dans la taxonomie</span>
+      </div>
+    </div>
+
+    <div class="tablewrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Validé</th>
+            <th>Confiance</th>
+            <th>Branche</th>
+            <th>Label orphelin</th>
+            <th>Label réconcilié</th>
+            <th>ID réconcilié</th>
+            <th>Label final</th>
+            <th>ID final</th>
+            <th>Occurrences</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            {% set v = r.get("validated", False) %}
+            {% set conf = r.get("confidence", "NONE") %}
+            {% set fid = r.get("final_timel_id") %}
+            {% set is_libre = (v and (not fid or fid == "none")) %}
+            <tr class="{% if v %}row-validated{% elif conf == 'HIGH' %}row-high{% elif conf == 'NONE' %}row-none{% endif %}">
+              <td>
+                <a class="btn btn-ghost" style="padding:6px 10px"
+                   href="{{ url_for('correction', idx=r.get('idx'), pending='0') }}">
+                  #{{ r.get("idx") }}
+                </a>
+              </td>
+                <td>{{ "✅" if r.get("validated") else "❌" }}</td>
+              {% set conf_title = {
+                "HIGH": "Correspondance fiable (label préféré ou alternatif TIMEL)",
+                "LOW":  "Correspondance incertaine (similarité faible)",
+                "NONE": "Aucune correspondance trouvée dans la taxonomie"
+              }.get(r.get("confidence"), "") %}
+              <td><code title="{{ conf_title }}">{{ r.get("confidence") }}</code></td>
+              <td>{{ BRANCH_LABELS.get(r.get("first_level_timel"), r.get("first_level_timel")) }}</td>
+              <td>{{ r.get("orphan_label") }}</td>
+              <td>{{ r.get("reconciled_label") }}</td>
+              <td>
+                {% set rid = r.get("reconciled_timel_id") %}
+                {% if rid and rid != "none" %}
+                  <a href="https://doi.org/10.34817/{{ rid }}" target="_blank" rel="noopener"><code>{{ rid }}</code></a>
+                {% else %}
+                  <code>{{ rid }}</code>
+                {% endif %}
+              </td>
+              <td>{{ r.get("orphan_label") if is_libre else r.get("final_label") }}</td>
+              <td>
+                {% if is_libre %}
+                  <span class="tag-libre">label libre</span>
+                {% elif fid and fid != "none" %}
+                  <a href="https://doi.org/10.34817/{{ fid }}" target="_blank" rel="noopener"><code>{{ fid }}</code></a>
+                {% else %}
+                  <code>{{ fid }}</code>
+                {% endif %}
+              </td>
+              <td>{{ r.get("total_occ_orphan_label") }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="muted" style="margin-top:10px">
+      Les statuts/labels viennent de SQLite. “Exporter” génère un ZIP (snapshot + log).
+    </div>
+  </div>
+</div>
+
+{% endblock %}

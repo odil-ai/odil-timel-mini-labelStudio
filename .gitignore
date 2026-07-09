@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Environment (contient des secrets — utiliser .env.example comme modèle)
+.env
+.dev.env
+
+# Exports générés
+export_snapshot.csv
+export_log.csv
+
+# Sauvegardes de la base SQLite (scripts/backup_db.sh)
+data/backups/
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+.claude/

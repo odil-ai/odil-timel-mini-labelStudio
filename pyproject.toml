@@ -1,0 +1,45 @@
+[project]
+name = "odil-timel-mini-Label-Studio"
+version = "0.1.0"
+description = "Application for reconciling and correcting annotations from GAHOM/AHLOMA (EHESS), based on the TIMEL thesaurus, as part of the O.D.I.L. project."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Lucas Terriel" },
+]
+maintainers = [
+    { name = "École nationale des chartes – PSL" },
+]
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.1.2",
+    "pandas>=3.0.0",
+    "python-dotenv>=1.2.1",
+    "numpy>=2.4.1",
+]
+
+[project.urls]
+Homepage = "https://projet-odil.fr"
+Organization = "https://www.chartes.psl.eu/"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.20",
+]
+
+# This is a standalone Flask app (run via `uv run` / `flask run` / gunicorn),
+# not a library meant to be built into a wheel — skip uv's build-and-install-
+# self step (also avoids setuptools package-discovery ambiguity from the
+# services/templates/static/scripts/data top-level directories).
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"

@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% block content %}
+
+    {% if empty %}
+        <div class="page">
+            <div class="hero" data-anim="hero">
+                <h2>Aucune ligne à corriger</h2>
+                <p class="muted">Selon les filtres actuels, il n’y a rien à afficher.</p>
+                <a class="btn btn-primary" href="{{ url_for('correction', pending='0') }}">
+                    <i class="fa-solid fa-eye"></i> Voir tout
+                </a>
+            </div>
+        </div>
+    {% else %}
+
+        <div class="page" data-page="correction" data-cursor="{{ cursor }}">
+            <div class="page-head" data-anim="hero">
+                <div>
+                    <h2><i class="fa-solid fa-wand-magic-sparkles"></i> Correction</h2>
+                    <div class="muted">
+                        Ligne <b id="uiCursor">{{ cursor+1 }}</b> / <span id="uiTotal">{{ nrows }}</span>
+                        · Branche <code id="uiBranch">{{ BRANCH_LABELS.get(row.first_level_timel, row.first_level_timel) }}</code>
+                        · Confiance <code id="uiConf">{{ row.confidence }}</code>
+                    </div>
+                </div>
+
+                <div class="status">
+                    <b>Statut :</b>
+
+                    {% if is_validated %}
+                        <span id="uiStatusBadge" class="badge badge-ok">
+      <i class="fa-solid fa-circle-check"></i> Validé
+    </span>
+                    {% elif has_decision %}
+                        <span id="uiStatusBadge" class="badge badge-warn">
+      <i class="fa-solid fa-pen-to-square"></i> Modifié
+    </span>
+                    {% else %}
+                        <span id="uiStatusBadge" class="badge badge-todo">
+      <i class="fa-regular fa-circle"></i> À faire
+    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- FILTERS -->
+            <details class="card" open data-anim="card">
+                <summary class="card-title summary"><i class="fa-solid fa-filter"></i> Filtres</summary>
+                <form method="get" class="form-grid">
+                    <label>
+                        État
+                        <select name="pending">
+                            <option value="1" {{ "selected" if filters.pending else "" }}>Seulement non validés</option>
+                            <option value="0" {{ "" if filters.pending else "selected" }}>Tous</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        Branche
+                        <select name="br">
+                            <option>(toutes)</option>
+                            {% for b in branches %}
+                                <option value="{{ b }}" {{ "selected" if filters.br == b else "" }}>{{ BRANCH_LABELS.get(b, b) }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+
+
+                    <fieldset class="fieldset">
+                        <legend>Confiance</legend>
+                        <div class="chips">
+                            {% for c in ["HIGH","MEDIUM","LOW","NONE"] %}
+                                <label class="chip">
+                                    <input type="checkbox" name="conf"
+                                           value="{{ c }}" {{ "checked" if c in filters.confs else "" }}>
+                                    {{ c }}
+                                </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+
+                    <div class="form-actions">
+                        <button class="btn btn-primary" type="submit">
+                            <i class="fa-solid fa-check"></i> Appliquer
+                        </button>
+                        <a class="btn" href="{{ url_for('correction') }}">
+                            <i class="fa-solid fa-rotate-left"></i> Reset
+                        </a>
+                    </div>
+                </form>
+            </details>
+
+            <!-- LABEL -->
+            <div class="card" data-anim="card">
+                <div class="card-title"><i class="fa-solid fa-tags"></i> Label</div>
+
+                <div class="label-grid">
+                    <!-- left: initial / suggested / final -->
+                    <div>
+                        <div class="label-box" style="margin-top:0">
+                            <div class="label-box-title muted">Initial</div>
+                            <div class="label-line">
+                                <b id="uiOrphanLabel">{{ row.orphan_label }}</b>
+                            </div>
+                        </div>
+
+                        <div class="label-box">
+                            <div class="label-box-title muted">Suggéré (reconciled)</div>
+                            <div class="label-line">
+                                {% set rid = row.reconciled_timel_id %}
+                                <a id="uiReconciledLink" class="tm-link{{ '' if rid and rid != 'none' else ' tm-link-disabled' }}"
+                                   href="{{ 'https://doi.org/10.34817/' ~ rid if rid and rid != 'none' else '#' }}"
+                                   target="_blank" rel="noopener">
+                                    <code id="uiReconciledId">{{ rid }}</code>
+                                </a>
+                                <span class="label-sep">—</span>
+                                <b id="uiReconciledLabel">{{ row.reconciled_label }}</b>
+                            </div>
+                        </div>
+
+                        <div class="label-box label-box-final">
+                            <div class="label-box-title muted">Final (courant)</div>
+                            <div class="label-line">
+                                {% set fid = current_final_id %}
+                                <a id="uiFinalLink" class="tm-link{{ '' if fid and fid != 'none' else ' tm-link-disabled' }}"
+                                   href="{{ 'https://doi.org/10.34817/' ~ fid if fid and fid != 'none' else '#' }}"
+                                   target="_blank" rel="noopener">
+                                    <code id="currentFinalId">{{ fid }}</code>
+                                </a>
+                                <span class="label-sep">—</span>
+                                <b id="currentFinalLabel">{{ current_final_label }}</b>
+                            </div>
+                        </div>
+
+                        <input type="hidden" id="rowId" value="{{ key }}">
+                    </div>
+
+                    <!-- right: search -->
+                    <div>
+                        <label class="muted">Recherche taxonomie</label>
+                        <div>
+                            <div class="taxo-search-row">
+                                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                <input id="taxoSearch" placeholder="tm-… ou un mot…" autocomplete="off">
+                            </div>
+
+                            <div id="taxoResults" class="results" aria-live="polite"></div>
+
+                            <div class="muted" style="margin-top:10px">
+                                Astuce : <kbd>/</kbd> pour focus · <kbd>↑</kbd>/<kbd>↓</kbd> · <kbd>Enter</kbd> pour
+                                choisir
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACTIONBAR (no page reload) -->
+            <div class="actionbar" data-anim="actionbar">
+                <div class="actionbar-left">
+                    <button class="btn btn-primary" id="validateNextBtn" type="button">
+                        <i class="fa-solid fa-circle-check"></i> Valider <span class="muted">(Enter)</span>
+                    </button>
+                    <button class="btn" id="noneNextBtn" type="button">
+                        <i class="fa-solid fa-ban"></i> None <span class="muted">(Shift+Enter)</span>
+                    </button>
+                </div>
+                <div class="actionbar-right">
+                    <button class="btn" id="prevBtn" type="button"><i class="fa-solid fa-arrow-left"></i></button>
+                    <button class="btn" id="nextBtn" type="button"><i class="fa-solid fa-arrow-right"></i></button>
+                </div>
+            </div>
+
+            <!-- IMAGES -->
+            <div class="card" data-anim="card">
+                <div class="card-title"><i class="fa-solid fa-images"></i> Images</div>
+
+                <div class="img-toolbar">
+                    <button class="btn" id="exclNoneBtn" type="button"><i class="fa-regular fa-square"></i> Tout inclure
+                    </button>
+                    <button class="btn" id="exclAllBtn" type="button"><i class="fa-regular fa-square-check"></i> Tout
+                        exclure
+                    </button>
+                    <span class="muted" id="exclCount"></span>
+                </div>
+
+                <div class="grid-images">
+                    {% for img in images_list %}
+                        <div class="imgcard" data-rel="{{ img.rel }}" data-old="{{ img.old_name }}" data-new="{{ img.new_name or '' }}">
+                            <button class="imgbtn" type="button" title="Ouvrir">
+                                <img src="{{ img.src }}" class="thumb" loading="lazy" alt="image">
+                            </button>
+
+                            <div class="caption">
+                                <div>{{ img.old_name }}</div>
+                                {% if img.new_name %}<div class="caption-alt">{{ img.new_name }}</div>{% endif %}
+                            </div>
+
+                            <label class="chip">
+                                <input type="checkbox" class="excl"
+                                       value="{{ img.rel }}" {{ "checked" if img.rel in excluded_list else "" }}>
+                                Exclure
+                            </label>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="muted" style="margin-top:10px">
+                    Clique une image pour l’ouvrir en grand. Les exclusions sont sauvegardées automatiquement.
+                </div>
+            </div>
+
+            <!-- Modal image viewer -->
+            <div class="modal" id="imgModal" aria-hidden="true">
+                <div class="modal-backdrop" data-close-modal></div>
+                <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true">
+                    <div class="modal-head">
+                        <div class="modal-title" id="imgModalTitle"><i class="fa-solid fa-image"></i> Image</div>
+                        <div class="modal-head-actions">
+                            <button class="btn btn-ghost" id="imgZoomOutBtn" type="button" title="Dézoomer">
+                                <i class="fa-solid fa-magnifying-glass-minus"></i>
+                            </button>
+                            <button class="btn btn-ghost" id="imgZoomResetBtn" type="button" title="Réinitialiser le zoom">
+                                <span id="imgZoomPct">100%</span>
+                            </button>
+                            <button class="btn btn-ghost" id="imgZoomInBtn" type="button" title="Zoomer">
+                                <i class="fa-solid fa-magnifying-glass-plus"></i>
+                            </button>
+                            <label class="chip">
+                                <input type="checkbox" id="imgModalExcl">
+                                Exclure
+                            </label>
+                            <button class="btn btn-ghost" data-close-modal><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-img-wrap" id="imgModalWrap">
+                            <img id="imgModalImg" class="modal-img" alt="image grande">
+                        </div>
+                        <div class="muted" id="imgModalPath" style="margin-top:10px"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    {% endif %}
+{% endblock %}

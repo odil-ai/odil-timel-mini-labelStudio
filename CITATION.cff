@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "odil-timel-mini-label-studio"
+version: 0.1.0
+date-released: "2026-07-09"
+abstract: >-
+  Web application for reconciling and correcting annotations from
+  GAHOM/AHLOMA (EHESS), based on the TIMEL thesaurus, as part of the
+  O.D.I.L. project.
+authors:
+  - family-names: Terriel
+    given-names: Lucas
+    orcid: "https://orcid.org/0000-0002-9189-258X"
+    affiliation: "École nationale des chartes – PSL"
+keywords:
+  - digital humanities
+  - taxonomy reconciliation
+  - annotation
+  - TIMEL
+  - GAHOM
+  - AHLOMA
+  - ODIL
+license: MIT
