@@ -1,4 +1,4 @@
-# timel-annotation-studio
+# O.D.I.L. Timel mini Label Studio
 
 Web Application for reconciling and correcting annotations from GAHOM/AHLOMA (EHESS), based on the TIMEL thesaurus, as part of the O.D.I.L. project.
 
@@ -38,7 +38,7 @@ cp .env.example .env
 Two files are recognized, both ignored by git (`.gitignore`) since they hold secrets:
 
 - **`.env`**: base/reference configuration (shared / deployment).
-- **`.dev.env`** *(optional)*: local developer override — if present, its values take precedence over `.env` for the same keys.
+- **`.dev.env`** *(optional)*: local developer override: if present, its values take precedence over `.env` for the same keys.
 
 | Variable | Description | Default |
 |---|---|---|
@@ -121,12 +121,12 @@ To automate it weekly via cron (e.g. Friday at 8pm, around deployment time):
 
 ## Usage
 
-1. Go to `http://127.0.0.1:5000` — the login page appears
+1. Go to [http://127.0.0.1:5000](http://127.0.0.1:5000): the login page appears
 2. Enter the password configured in `APP_PASSWORD`
 3. Navigate the views:
    - **Correction** (`/correction`): row-by-row review, with filters by taxonomy branch, confidence level and status
    - **Table** (`/table`): tabular view with full-text search and filters
-4. To export decisions: the **Export** button in the interface → downloads a `.zip` containing:
+4. To export decisions: the **Export** button in the interface then downloads a `.zip` containing:
    - `export_snapshot.csv`: every decision (one row per orphan label)
    - `export_log.csv`: chronological action log (`set_final`, `validate`, `set_exclusions`)
    - `validated_annotations.json`: validated annotations aggregated **per image** (`sha`, `gahom_filename`, `odil_filename`, `validated_annotations` with `timel_id`/`timel_label`, `free_labels` for free-text validations, plus `total_images`/`total_validated_annotations` totals)
@@ -187,7 +187,7 @@ See [CITATION.cff](CITATION.cff) for citation metadata.
 
 ## Credits
 
-Developed by the **École Nationale des Chartes – PSL** as part of the [ODIL](https://projet-odil.fr) project.
+Developed by the **École Nationale des Chartes – PSL**.
 
 - EHESS / Ahloma
 - Biblissima+
