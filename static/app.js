@@ -15,6 +15,7 @@
 function withPrefix(path) {
     const prefix = (typeof APP_PREFIX !== "undefined" && APP_PREFIX) ? APP_PREFIX : "";
     if (!prefix || typeof path !== "string" || !path.startsWith("/")) return path;
+    console.log(`withPrefix: ${path} -> ${prefix + path}`);
     return prefix + path;
 }
 
