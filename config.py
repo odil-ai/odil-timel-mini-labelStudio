@@ -28,6 +28,23 @@ def _normalize_prefix(raw: str) -> str:
     return f"/{raw}" if raw else ""
 
 
+def _env_bool(raw: str, default: bool) -> bool:
+    """Parse a boolean environment variable (``"false"``/``"0"``/``"no"`` are
+    falsy, case-insensitively; anything else, including unset, follows
+    ``default``).
+
+    :param raw: Raw environment value (may be ``None``).
+    :type raw: str
+    :param default: Value to use when ``raw`` is unset/empty.
+    :type default: bool
+    :returns: The parsed boolean.
+    :rtype: bool
+    """
+    if not raw:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no")
+
+
 class Config:
     """Flask configuration object, exposed as ``app.config`` after
     ``app.config.from_object(Config)`` in ``create_app()``.
@@ -39,6 +56,13 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-secret"
     """Flask session signing key. Must be overridden in `.env`/`.dev.env`;
     app.py refuses to start while this is left at the "dev-secret" default."""
+
+    SESSION_COOKIE_SECURE = _env_bool(os.environ.get("SESSION_COOKIE_SECURE"), True)
+    """Whether the session cookie requires HTTPS (Flask's built-in
+    `SESSION_COOKIE_SECURE` setting). Defaults to True (the app is meant to
+    be served over HTTPS in production); set `SESSION_COOKIE_SECURE=false`
+    in `.dev.env` for local plain-HTTP development, otherwise the browser
+    silently drops the cookie and login never persists."""
 
     APP_PASSWORD = os.environ.get("APP_PASSWORD") or ""
     """Single shared password gating access to the whole app (see
