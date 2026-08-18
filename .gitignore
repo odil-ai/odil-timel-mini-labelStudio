@@ -9,7 +9,7 @@ __pycache__/
 .dev.env
 nginx-odil-timel-labelstudio.conf
 
-
+notesfixes.txt
 data/timel_reconcile.sqlite
 # Exports générés
 export_snapshot.csv

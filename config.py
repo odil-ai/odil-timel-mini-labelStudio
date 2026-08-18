@@ -76,6 +76,15 @@ class Config:
     TAXO_PATH = os.environ.get("TAXO_PATH") or "data/timel-taxonomy_enriched.json"
     """Path to the TIMEL taxonomy JSON file (`tm-id -> {pref_label, ...}`)."""
 
+    HIERARCHY_PATH = os.environ.get("HIERARCHY_PATH") or "data/timel_hierarchy_complete.json"
+    """Path to the full TIMEL hierarchy JSON (list of `{id, path_ids,
+    path_labels, is_leaf, ...}`), used to derive the correct
+    `first_level_timel` branch for any row with a resolved
+    `reconciled_timel_id` — the CSV's own branch column is trusted only for
+    rows not yet reconciled. See `services.data.load_hierarchy` /
+    `apply_hierarchy_branches`. If missing, branch derivation is skipped and
+    the CSV's `first_level_timel` is used as-is everywhere (no crash)."""
+
     DB_PATH = os.environ.get("DB_PATH") or "data/timel_reconcile.sqlite"
     """Path to the SQLite database storing decisions and the action log."""
 

@@ -85,6 +85,72 @@ def load_taxo(path: str) -> dict[str, dict[str, Any]]:
         return json.load(f)
 
 
+BRANCH_ROOT_LABEL_TO_SLUG = {
+    "personnage": "timel_character",
+    "nature lieu": "timel_nature_place",
+    "objet architecture": "timel_object_architecture",
+    "sujet": "timel_subject",
+    "thème": "timel_thema",
+}
+"""Maps a hierarchy root label (French, as found in the root entries of
+`timel_hierarchy_complete.json`) to the `first_level_timel` slug used
+throughout the CSV/app. Hand-maintained: the two files are independently
+authored and don't share an id/slug convention for branches."""
+
+
+def load_hierarchy(path: str) -> dict[str, str]:
+    """Load the TIMEL hierarchy and derive each id's top-level branch slug.
+
+    :param path: Path to `timel_hierarchy_complete.json` (a list of entries
+        with `id` and `path_labels`, the latter's first element being the
+        hierarchy root label). If falsy or missing, an empty mapping is
+        returned (no crash) and branch derivation is effectively skipped.
+    :type path: str
+    :returns: Mapping of `tm-id` to its `first_level_timel` branch slug
+        (e.g. `"timel_object_architecture"`), derived from each entry's
+        hierarchy root via :data:`BRANCH_ROOT_LABEL_TO_SLUG`. An id whose
+        root has no known slug mapping is omitted.
+    :rtype: dict[str, str]
+    """
+    if not path or not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        entries = json.load(f)
+    out = {}
+    for e in entries:
+        slug = BRANCH_ROOT_LABEL_TO_SLUG.get(e["path_labels"][0])
+        if slug:
+            out[e["id"]] = slug
+    return out
+
+
+def apply_hierarchy_branches(df: pd.DataFrame, hierarchy_branches: dict[str, str]) -> pd.DataFrame:
+    """Override `first_level_timel` with the hierarchy-derived branch.
+
+    For every row whose `reconciled_timel_id` resolves in
+    ``hierarchy_branches``, replaces `first_level_timel` with the branch
+    computed from the real TIMEL hierarchy instead of trusting the CSV's own
+    (occasionally wrong — see the "mauvaise branche" bug) value. Rows with
+    no reconciled id (`"none"`) or an id absent from the hierarchy keep
+    their original `first_level_timel` unchanged, since there's nothing to
+    derive it from yet.
+
+    :param df: Dataframe as returned by :func:`load_initial_df`.
+    :type df: pandas.DataFrame
+    :param hierarchy_branches: Mapping as returned by :func:`load_hierarchy`.
+    :type hierarchy_branches: dict[str, str]
+    :returns: A copy of ``df`` with `first_level_timel` corrected where
+        possible.
+    :rtype: pandas.DataFrame
+    """
+    if not hierarchy_branches:
+        return df
+    out = df.copy()
+    resolved = out["reconciled_timel_id"].map(hierarchy_branches)
+    out["first_level_timel"] = resolved.fillna(out["first_level_timel"])
+    return out
+
+
 def load_filename_mapping(path: str) -> dict[str, str]:
     """Load the old/new image filename mapping TSV.
 
@@ -271,10 +337,14 @@ def taxo_search(q: str, taxo_index, taxo, limit: int = 30):
                 score += 5
         if score > 0:
             pref = taxo[tm_id].get("pref_label", "")
-            scored.append((score, tm_id, pref))
+            alts = taxo[tm_id].get("alt_labels") or []
+            scored.append((score, tm_id, pref, alts))
 
     scored.sort(reverse=True, key=lambda x: x[0])
     res = [{"id": "none", "label": "none"}]
-    for _, tm_id, pref in scored[:limit]:
-        res.append({"id": tm_id, "label": f"{tm_id} — {pref}"})
+    for _, tm_id, pref, alts in scored[:limit]:
+        label = f"{tm_id} — {pref}"
+        if alts:
+            label += f" (alt labels : {', '.join(alts)})"
+        res.append({"id": tm_id, "label": label})
     return res

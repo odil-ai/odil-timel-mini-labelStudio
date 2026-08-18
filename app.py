@@ -38,10 +38,12 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, sen
 
 from config import Config  # noqa: E402
 from services.data import (  # noqa: E402
+    apply_hierarchy_branches,
     build_taxo_index,
     enrich_df_with_decisions,
     enrich_images,
     load_filename_mapping,
+    load_hierarchy,
     load_initial_df,
     load_taxo,
     normalize_text,
@@ -115,9 +117,11 @@ def api_login_required(view):
 def create_app():
     """Build and configure the Flask application.
 
-    Loads configuration, the taxonomy, the input dataframe and the
-    filename mapping once at startup; registers the ``reset-db`` CLI
-    command and every HTTP route as closures over that shared state.
+    Loads configuration, the taxonomy, the input dataframe (with its
+    ``first_level_timel`` branch corrected from the TIMEL hierarchy where
+    possible) and the filename mapping once at startup; registers the
+    ``reset-db`` CLI command and every HTTP route as closures over that
+    shared state.
 
     :returns: The configured Flask application, ready to be run or
         imported by the Flask CLI (``flask --app app run``).
@@ -179,6 +183,8 @@ def create_app():
     taxo = load_taxo(app.config["TAXO_PATH"])
     taxo_index = build_taxo_index(taxo)
     df = load_initial_df(app.config["CSV_TSV_PATH"])
+    hierarchy_branches = load_hierarchy(app.config["HIERARCHY_PATH"])
+    df = apply_hierarchy_branches(df, hierarchy_branches)
     filename_map = load_filename_mapping(app.config["FILENAME_MAP_PATH"])
 
     # Cache invalidated on every write; avoids reloading SQLite + re-enriching on every request

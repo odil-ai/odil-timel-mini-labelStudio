@@ -46,6 +46,7 @@ Two files are recognized, both ignored by git (`.gitignore`) since they hold sec
 | `APP_PASSWORD` | Single shared password gating access to the app | _(empty : required)_ |
 | `IMAGES_ROOT` | Root path to local images (optional fallback when `IMAGE_ENDPOINT`/the filename mapping doesn't cover an image) | _(empty : fallback disabled)_ |
 | `TAXO_PATH` | Path to the taxonomy JSON file | `data/timel-taxonomy_enriched.json` |
+| `HIERARCHY_PATH` | Path to the full TIMEL hierarchy JSON (id → branch), used to correct each row's branch from its reconciled TIMEL id instead of trusting the CSV's own value. If missing, branch correction is skipped (no crash) | `data/timel_hierarchy_complete.json` |
 | `DB_PATH` | Path to the SQLite decisions database | `data/timel_reconcile.sqlite` |
 | `CSV_TSV_PATH` | Path to the input data file | `data/reconcile_timel_prepared.csv` |
 | `FILENAME_MAP_PATH` | Path to the old/new image filename mapping TSV | `data/mapping_old_new_img_filename.tsv` |
@@ -173,7 +174,8 @@ timel-annotation-studio/
 │   └── backup_db.sh                # Rotating SQLite backup (cron)
 └── data/
     ├── reconcile_timel_prepared.csv        # Input data (TSV)
-    ├── timel-taxonomy_enriched.json        # TIMEL taxonomy
+    ├── timel-taxonomy_enriched.json        # TIMEL taxonomy (labels, alt labels, scope notes)
+    ├── timel_hierarchy_complete.json       # Full TIMEL hierarchy (id -> branch), used to correct row branches
     ├── mapping_old_new_img_filename.tsv    # Old (gahom) / new (ODIL/IIIF) image filename mapping
     ├── timel_reconcile.sqlite              # Decisions database (generated at startup)
     └── backups/                            # Timestamped backups (generated, not versioned)
