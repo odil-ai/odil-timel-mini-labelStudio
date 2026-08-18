@@ -15,6 +15,9 @@ data/timel_reconcile.sqlite
 export_snapshot.csv
 export_log.csv
 
+missing_images/
+
+
 # Sauvegardes de la base SQLite (scripts/backup_db.sh)
 data/backups/
 
