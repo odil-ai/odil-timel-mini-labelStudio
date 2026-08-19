@@ -502,6 +502,71 @@ function renderStatusBadge(isValidated, hasDecision) {
 }
 
 /**
+ * Build the badge markup for one annotation's status
+ * (`/api/image_annotations` "status" field).
+ *
+ * @param {string} status - `"validated"`, `"modified"` or `"todo"`.
+ * @returns {string} HTML for a `.badge` span, matching `renderStatusBadge`.
+ */
+function annotationStatusBadgeHtml(status) {
+    if (status === "validated") return `<span class="badge badge-ok"><i class="fa-solid fa-circle-check"></i> Validé</span>`;
+    if (status === "modified") return `<span class="badge badge-warn"><i class="fa-solid fa-pen-to-square"></i> Modifié</span>`;
+    return `<span class="badge badge-todo"><i class="fa-regular fa-circle"></i> À faire</span>`;
+}
+
+/**
+ * Build the HTML for a list of annotations, as returned by
+ * `/api/image_annotations` — shared by the click modal and the hover
+ * popover.
+ *
+ * @param {Array<object>} annotations - Annotation records (see
+ *   `/api/image_annotations`).
+ * @returns {string} HTML for the `.annotations-list` content.
+ */
+function renderAnnotationsListHtml(annotations) {
+    if (!annotations || !annotations.length) {
+        return `<div class="muted">Aucune annotation trouvée pour cette image.</div>`;
+    }
+    return annotations.map(a => {
+        const finalPart = a.final_label ? ` → ${a.final_label}` : "";
+        return `
+      <div class="annotation-item">
+        <div class="annotation-item-main">
+          <div class="annotation-item-label">${a.orphan_label}</div>
+          <div class="annotation-item-sub">${a.branch_label}${finalPart}</div>
+        </div>
+        ${annotationStatusBadgeHtml(a.status)}
+      </div>
+    `;
+    }).join("");
+}
+
+const imageAnnotationsCache = new Map();
+
+/**
+ * Fetch every annotation associated with an image (by old/gahom filename),
+ * caching the result for the lifetime of the page (the underlying
+ * decisions rarely change fast enough to justify re-fetching on every
+ * hover of the same image).
+ *
+ * @param {string} oldName - The image's old (gahom) filename.
+ * @returns {Promise<Array<object>>} The annotation records, or `[]` on
+ *   error.
+ */
+async function fetchImageAnnotations(oldName) {
+    if (imageAnnotationsCache.has(oldName)) return imageAnnotationsCache.get(oldName);
+    try {
+        const r = await fetch(withPrefix(`/api/image_annotations?old_name=${encodeURIComponent(oldName)}`));
+        const data = await r.json();
+        const annotations = (data.ok && data.annotations) || [];
+        imageAnnotationsCache.set(oldName, annotations);
+        return annotations;
+    } catch {
+        return [];
+    }
+}
+
+/**
  * Load a row by cursor position and re-render the whole correction view
  * (labels, images, sidebar stats, status badge) without a full page reload.
  *
@@ -522,12 +587,9 @@ async function loadCursor(cursor) {
 
     setCursorInUrl(data.cursor);
 
-    // branch/conf in header
-    if (document.getElementById("uiBranch")) {
-        const rawBr = data.row.first_level_timel || "";
-        document.getElementById("uiBranch").textContent = (typeof BRANCH_LABELS !== "undefined" && BRANCH_LABELS[rawBr]) ? BRANCH_LABELS[rawBr] : rawBr;
-    }
-    if (document.getElementById("uiConf")) document.getElementById("uiConf").textContent = data.row.confidence || "";
+    // branch/conf filter summary in header (reflects the active filters, not this row's own values)
+    if ($("uiBranch")) $("uiBranch").textContent = data.filters.branch_label;
+    if ($("uiConf")) $("uiConf").textContent = data.filters.conf_label;
 
     // status badge
     renderStatusBadge(Boolean(data.is_validated), Boolean(data.has_decision));
@@ -579,8 +641,12 @@ async function persistExclusions() {
         excluded_images_json: getExcludedJson(),
         validated: false,
     });
-    if (res.ok) toast("Exclusions sauvegardées ✓", true);
-    else toast("Erreur sauvegarde exclusions", false);
+    if (res.ok) {
+        imageAnnotationsCache.clear();
+        toast("Exclusions sauvegardées ✓", true);
+    } else {
+        toast("Erreur sauvegarde exclusions", false);
+    }
     updateExclCount();
 }
 
@@ -604,6 +670,7 @@ async function chooseTmId(tmId) {
         $("currentFinalId").textContent = res.final_timel_id || tmId;
         $("currentFinalLabel").textContent = res.pref_label || "";
         setTmLink("uiFinalLink", res.final_timel_id || tmId);
+        imageAnnotationsCache.clear();
         toast("Label mis à jour ✓", true);
     } else {
         toast("Erreur label", false);
@@ -632,6 +699,7 @@ async function validateAndMove(finalId, delta) {
         toast("Erreur validation", false);
         return;
     }
+    imageAnnotationsCache.clear();
     toast("Validé ✓", true);
 
     const cur = parseInt(getQueryParamsForCorrection().get("cursor") || "0", 10);
@@ -841,6 +909,14 @@ function mountCorrection() {
 
             resetImgZoom();
             openModal(imgModal);
+
+            const annotationsList = $("imgModalAnnotationsList");
+            if (annotationsList) {
+                annotationsList.innerHTML = `<div class="muted">Chargement…</div>`;
+                fetchImageAnnotations(oldName).then(annotations => {
+                    annotationsList.innerHTML = renderAnnotationsListHtml(annotations);
+                });
+            }
         }
     });
 

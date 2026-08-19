@@ -142,13 +142,41 @@ def create_app():
 
     app.jinja_env.globals["APP_PREFIX"] = app.config["APP_PREFIX"]
 
-    app.jinja_env.globals["BRANCH_LABELS"] = {
+    BRANCH_LABELS = {
         "timel_character": "Personnage",
         "timel_nature_place": "Nature / Lieu",
         "timel_object_architecture": "Objet / Architecture",
         "timel_subject": "Sujet",
         "timel_thema": "Thème",
     }
+    app.jinja_env.globals["BRANCH_LABELS"] = BRANCH_LABELS
+
+    ALL_CONFIDENCES = {"HIGH", "LOW", "NONE"}
+
+    def format_branch_filter(br: str) -> str:
+        """Display text for the active branch filter (correction header).
+
+        :param br: Selected branch slug, or ``"(toutes)"`` for no filter.
+        :type br: str
+        :returns: ``"(toutes)"`` unchanged, or the branch's French label.
+        :rtype: str
+        """
+        if br == "(toutes)":
+            return "(toutes)"
+        return BRANCH_LABELS.get(br, br)
+
+    def format_conf_filter(confs: list[str]) -> str:
+        """Display text for the active confidence filter (correction header).
+
+        :param confs: Selected confidence levels.
+        :type confs: list[str]
+        :returns: ``"(toutes)"`` when every level is selected (i.e. no
+            effective filter), otherwise the selected levels joined by ", ".
+        :rtype: str
+        """
+        if not confs or set(confs) == ALL_CONFIDENCES:
+            return "(toutes)"
+        return ", ".join(confs)
 
     if not app.config.get("SECRET_KEY") or app.config["SECRET_KEY"] == "dev-secret":
         raise RuntimeError("SECRET_KEY must be set in the environment — add it to your .env file.")
@@ -391,7 +419,7 @@ def create_app():
 
         q = request.args.get("q", "").strip()
         only_pending = request.args.get("only_pending", "0") == "1"
-        confs = request.args.getlist("conf") or ["HIGH", "MEDIUM", "LOW", "NONE"]
+        confs = request.args.getlist("conf") or ["HIGH", "LOW", "NONE"]
         br = request.args.getlist("br")
 
         dff = df_enriched.copy()
@@ -459,7 +487,7 @@ def create_app():
         decisions, df_enriched = compute_state()
 
         show_only_pending = request.args.get("pending", "1") == "1"
-        confs = request.args.getlist("conf") or ["HIGH", "MEDIUM", "LOW", "NONE"]
+        confs = request.args.getlist("conf") or ["HIGH", "LOW", "NONE"]
         br = request.args.get("br", "(toutes)")
         cursor = int(request.args.get("cursor", session.get("cursor", 0)))
         target_idx = request.args.get("idx")
@@ -520,7 +548,13 @@ def create_app():
             branches=branches,
             stats=stats,
             per_branch=per_branch,
-            filters={"pending": show_only_pending, "confs": confs, "br": br},
+            filters={
+                "pending": show_only_pending,
+                "confs": confs,
+                "br": br,
+                "branch_label": format_branch_filter(br),
+                "conf_label": format_conf_filter(confs),
+            },
         )
 
     @app.get("/api/correction/row")
@@ -542,7 +576,7 @@ def create_app():
         decisions, df_enriched = compute_state()
 
         show_only_pending = request.args.get("pending", "1") == "1"
-        confs = request.args.getlist("conf") or ["HIGH", "MEDIUM", "LOW", "NONE"]
+        confs = request.args.getlist("conf") or ["HIGH", "LOW", "NONE"]
         br = request.args.get("br", "(toutes)")
         cursor = int(request.args.get("cursor", 0))
 
@@ -587,8 +621,60 @@ def create_app():
                 "is_validated": bool(decision and decision.get("validated")),
                 "stats": stats,
                 "per_branch": per_branch,
+                "filters": {
+                    "branch_label": format_branch_filter(br),
+                    "conf_label": format_conf_filter(confs),
+                },
             }
         )
+
+    @app.get("/api/image_annotations")
+    @api_login_required
+    def api_image_annotations():
+        """JSON API: list every annotation associated with an image
+        (GET /api/image_annotations?old_name=...).
+
+        Scans the whole dataset (any branch) for rows whose ``images``
+        list includes the given old (gahom) filename, since a single image
+        can illustrate several distinct orphan labels. Powers the hover
+        popover and click modal on the correction view's image grid.
+
+        :returns: ``{"ok": True, "old_name": ..., "annotations": [...]}``,
+            each annotation a dict with ``orphan_label``, ``branch_label``,
+            ``reconciled_label``, ``reconciled_timel_id``, ``final_label``,
+            ``final_timel_id`` and ``status`` (``"validated"``,
+            ``"modified"`` or ``"todo"``).
+        :rtype: flask.Response
+        """
+        old_name = (request.args.get("old_name") or "").strip()
+        if not old_name:
+            return jsonify({"ok": False, "error": "missing old_name"}), 400
+
+        _, df_enriched = compute_state()
+
+        annotations = []
+        for _, r in df_enriched.iterrows():
+            names = {rel.rsplit("/", 1)[-1] for rel in safe_parse_list(r.get("images"))}
+            if old_name not in names:
+                continue
+
+            final_id = r.get("final_timel_id") or ""
+            validated = bool(r.get("validated"))
+            status = "validated" if validated else ("modified" if final_id else "todo")
+
+            annotations.append(
+                {
+                    "orphan_label": r.get("orphan_label", ""),
+                    "branch_label": BRANCH_LABELS.get(r.get("first_level_timel"), r.get("first_level_timel")),
+                    "reconciled_label": r.get("reconciled_label", ""),
+                    "reconciled_timel_id": r.get("reconciled_timel_id", ""),
+                    "final_label": r.get("final_label", ""),
+                    "final_timel_id": final_id,
+                    "status": status,
+                }
+            )
+
+        return jsonify({"ok": True, "old_name": old_name, "annotations": annotations})
 
     @app.get("/api/taxo_search")
     @api_login_required

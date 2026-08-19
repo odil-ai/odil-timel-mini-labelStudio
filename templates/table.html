@@ -26,7 +26,7 @@
       <fieldset class="fieldset">
         <legend>Confiance</legend>
         <div class="chips">
-          {% for c in ["HIGH","MEDIUM","LOW","NONE"] %}
+          {% for c in ["HIGH","LOW","NONE"] %}
             <label class="chip">
               <input type="checkbox" name="conf" value="{{ c }}" {{ "checked" if c in filters.confs else "" }}>
               {{ c }}
