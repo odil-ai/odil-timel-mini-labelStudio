@@ -516,8 +516,7 @@ function annotationStatusBadgeHtml(status) {
 
 /**
  * Build the HTML for a list of annotations, as returned by
- * `/api/image_annotations` — shared by the click modal and the hover
- * popover.
+ * `/api/image_annotations` — used in the image click modal.
  *
  * @param {Array<object>} annotations - Annotation records (see
  *   `/api/image_annotations`).
@@ -528,12 +527,19 @@ function renderAnnotationsListHtml(annotations) {
         return `<div class="muted">Aucune annotation trouvée pour cette image.</div>`;
     }
     return annotations.map(a => {
-        const finalPart = a.final_label ? ` → ${a.final_label}` : "";
+        // Once a decision exists (modified or validated), the current final
+        // label (with its tm-id) replaces the orphan label as the title —
+        // only rows still "todo" show the orphan label, since there's
+        // nothing final to show yet.
+        const decided = a.status !== "todo" && a.final_label;
+        const title = decided
+            ? (a.final_timel_id && a.final_timel_id !== "none" ? `${a.final_label} (${a.final_timel_id})` : a.final_label)
+            : a.orphan_label;
         return `
       <div class="annotation-item">
         <div class="annotation-item-main">
-          <div class="annotation-item-label">${a.orphan_label}</div>
-          <div class="annotation-item-sub">${a.branch_label}${finalPart}</div>
+          <div class="annotation-item-label">${title}</div>
+          <div class="annotation-item-sub">${a.branch_label}</div>
         </div>
         ${annotationStatusBadgeHtml(a.status)}
       </div>
