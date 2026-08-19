@@ -149,9 +149,10 @@ def init_db(db_path: str) -> None:
     """Create the SQLite schema if missing, migrating legacy data if needed.
 
     Safe to call on every app startup: creates the parent directory and the
-    ``decisions``/``actions`` tables if absent, and transparently upgrades
+    ``decisions``/``actions`` tables if absent, transparently upgrades
     a pre-hash-schema database in place (see
-    :func:`_migrate_legacy_decisions` / :func:`_migrate_legacy_actions`).
+    :func:`_migrate_legacy_decisions` / :func:`_migrate_legacy_actions`),
+    and adds the ``comment`` column to ``decisions`` if it predates it.
 
     :param db_path: Filesystem path to the SQLite database file.
     :type db_path: str
@@ -175,6 +176,7 @@ def init_db(db_path: str) -> None:
             final_timel_id TEXT NOT NULL,
             excluded_images TEXT NOT NULL DEFAULT '[]',
             validated INTEGER NOT NULL DEFAULT 0,
+            comment TEXT NOT NULL DEFAULT '',
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         """)
@@ -187,6 +189,10 @@ def init_db(db_path: str) -> None:
             timestamp TEXT NOT NULL DEFAULT (datetime('now'))
         );
         """)
+
+        if "comment" not in _table_columns(cur, "decisions"):
+            cur.execute("ALTER TABLE decisions ADD COLUMN comment TEXT NOT NULL DEFAULT ''")
+
         con.commit()
     finally:
         con.close()
@@ -221,17 +227,22 @@ def db_load_all_decisions(db_path: str) -> dict[str, dict[str, Any]]:
     :type db_path: str
     :returns: Mapping of ``content_hash`` to a dict with keys
         ``final_timel_id`` (str), ``excluded_images`` (str, JSON-encoded
-        list) and ``validated`` (bool).
+        list), ``validated`` (bool) and ``comment`` (str, free text).
     :rtype: dict[str, dict[str, Any]]
     """
     con = sqlite3.connect(db_path)
     cur = con.cursor()
-    cur.execute("SELECT content_hash, final_timel_id, excluded_images, validated FROM decisions")
+    cur.execute("SELECT content_hash, final_timel_id, excluded_images, validated, comment FROM decisions")
     rows = cur.fetchall()
     con.close()
     return {
-        h: {"final_timel_id": final_id, "excluded_images": excluded_images, "validated": bool(validated)}
-        for h, final_id, excluded_images, validated in rows
+        h: {
+            "final_timel_id": final_id,
+            "excluded_images": excluded_images,
+            "validated": bool(validated),
+            "comment": comment or "",
+        }
+        for h, final_id, excluded_images, validated, comment in rows
     }
 
 
@@ -242,6 +253,7 @@ def db_upsert_and_log(
     excluded_images: str,
     validated: bool,
     action: str,
+    comment: str | None = None,
 ) -> None:
     """Upsert a decision and append an action log entry in a single transaction.
 
@@ -260,8 +272,12 @@ def db_upsert_and_log(
     :param validated: Whether this decision is marked as validated.
     :type validated: bool
     :param action: Action name recorded in the log (``"set_final"``,
-        ``"validate"`` or ``"set_exclusions"``).
+        ``"validate"``, ``"set_exclusions"`` or ``"set_comment"``).
     :type action: str
+    :param comment: Free-text comment to store, or ``None`` to leave the
+        existing comment untouched (used by actions that don't carry a
+        comment of their own, e.g. ``set_final``/``validate``).
+    :type comment: str | None
     :returns: Nothing; the database is updated as a side effect.
     :rtype: None
     """
@@ -270,15 +286,16 @@ def db_upsert_and_log(
         cur = con.cursor()
         cur.execute(
             """
-            INSERT INTO decisions(content_hash, final_timel_id, excluded_images, validated)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO decisions(content_hash, final_timel_id, excluded_images, validated, comment)
+            VALUES (?, ?, ?, ?, COALESCE(?, ''))
             ON CONFLICT(content_hash) DO UPDATE SET
                 final_timel_id = excluded.final_timel_id,
                 excluded_images = excluded.excluded_images,
                 validated = excluded.validated,
+                comment = COALESCE(?, comment),
                 updated_at = datetime('now');
             """,
-            (row_id, final_timel_id, excluded_images, int(validated)),
+            (row_id, final_timel_id, excluded_images, int(validated), comment, comment),
         )
         cur.execute(
             "INSERT INTO actions(content_hash, action, final_timel_id) VALUES (?,?,?)",

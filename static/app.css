@@ -304,6 +304,18 @@ html[data-sidebar="collapsed"] .sidebar-toggle i{ transform: rotate(180deg); }
 }
 :root[data-theme="dark"] .btn-primary{ border-color: rgba(96,165,250,0.25); }
 
+.btn-disabled{
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: default;
+}
+
+.pagination{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .btn-ghost{
   background: transparent;
   box-shadow: none;
@@ -391,7 +403,32 @@ input:focus, select:focus{
 }
 
 .taxo-search-row input{
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.taxo-search-row select{
+  flex: 0 0 auto;
+  width: auto;
+  padding: 11px 14px;
+}
+
+.comment-box{
   width: 100%;
+  min-height: 56px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text);
+  outline: none;
+  font: inherit;
+  resize: vertical;
+}
+.comment-box:focus{
+  box-shadow: var(--focus);
+  border-color: rgba(37,99,235,0.45);
 }
 
 .chipline{ flex-direction: row !important; align-items: center; gap: 10px; padding-top: 24px; }
@@ -454,15 +491,27 @@ input:focus, select:focus{
 }
 
 /* RESULTS dropdown */
+.taxo-search-wrap{
+  position: relative;
+}
+
 .results{
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
   border: 1px solid var(--border);
   border-radius: 14px;
   overflow: hidden;
   margin-top: 8px;
   background: var(--panel);
-  box-shadow: var(--shadow2);
+  box-shadow: var(--shadow);
   max-height: 280px;
   overflow-y: auto;
+}
+.results:empty{
+  display: none;
 }
 .result{
   padding: 10px 12px;
@@ -611,6 +660,16 @@ input:focus, select:focus{
 }
 
 /* TABLE */
+.tablewrap-scrolltop{
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 16px;
+  margin-bottom: 4px;
+}
+.tablewrap-scrolltop > div{
+  height: 1px;
+}
+
 .tablewrap{
   overflow:auto;
   border-radius: 16px;

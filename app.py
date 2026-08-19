@@ -53,6 +53,9 @@ from services.data import (  # noqa: E402
 )
 from services.db import db_load_all_decisions, db_upsert_and_log, init_db, reset_db  # noqa: E402
 
+TABLE_PAGE_SIZES = [50, 100, 150, 500]
+"""Selectable page sizes for the /table view (see :func:`create_app.table`)."""
+
 
 def with_app_prefix(path: str) -> str:
     """Prepend the configured ``APP_PREFIX`` to a root-relative path.
@@ -209,9 +212,9 @@ def create_app():
         click.echo("Restart the app if it's already running (its in-memory cache still holds the old decisions).")
 
     taxo = load_taxo(app.config["TAXO_PATH"])
-    taxo_index = build_taxo_index(taxo)
-    df = load_initial_df(app.config["CSV_TSV_PATH"])
     hierarchy_branches = load_hierarchy(app.config["HIERARCHY_PATH"])
+    taxo_index = build_taxo_index(taxo, hierarchy_branches)
+    df = load_initial_df(app.config["CSV_TSV_PATH"])
     df = apply_hierarchy_branches(df, hierarchy_branches)
     filename_map = load_filename_mapping(app.config["FILENAME_MAP_PATH"])
 
@@ -410,7 +413,11 @@ def create_app():
 
         Supports filtering by free-text search (``q``), pending-only
         (``only_pending``), confidence level (``conf``, repeatable) and
-        taxonomy branch (``br``, repeatable).
+        taxonomy branch (``br``, repeatable). Paginated: ``page_size``
+        (``50`` default, one of :data:`TABLE_PAGE_SIZES` or ``"all"``) and
+        ``page`` (1-indexed) control which slice of the filtered rows is
+        rendered — with ~7800 rows, rendering everything at once is what
+        made the page (and its progress bars) slow to appear.
 
         :returns: The rendered table page.
         :rtype: flask.Response
@@ -457,8 +464,44 @@ def create_app():
         stats, per_branch = compute_stats(df_enriched)
         dff = dff.copy()
         dff["idx"] = dff.index.astype(int)
-        rows = dff.to_dict(orient="records")
         branches = sorted(df_enriched["first_level_timel"].dropna().unique().tolist())
+
+        total_filtered = len(dff)
+        page_size_raw = request.args.get("page_size", "50")
+        show_all = page_size_raw == "all"
+        page_size = page_size_raw if show_all else (int(page_size_raw) if page_size_raw.isdigit() else 50)
+        if not show_all and page_size not in TABLE_PAGE_SIZES:
+            page_size = 50
+
+        if show_all:
+            page = 1
+            total_pages = 1
+            dff_page = dff
+        else:
+            total_pages = max(1, (total_filtered + page_size - 1) // page_size)
+            page = request.args.get("page", "1")
+            page = int(page) if page.isdigit() else 1
+            page = min(max(page, 1), total_pages)
+            start = (page - 1) * page_size
+            dff_page = dff.iloc[start : start + page_size]
+
+        rows = dff_page.to_dict(orient="records")
+
+        def page_url(target_page):
+            """Build a /table URL for another page, preserving every other
+            current filter/query param (including repeated ones like
+            ``conf``/``br``).
+
+            :param target_page: 1-indexed page number to link to.
+            :type target_page: int
+            :returns: The URL, e.g. ``/table?conf=HIGH&page=2``.
+            :rtype: str
+            """
+            from urllib.parse import urlencode
+
+            args = request.args.to_dict(flat=False)
+            args["page"] = [str(target_page)]
+            return f"{url_for('table')}?{urlencode(args, doseq=True)}"
 
         return render_template(
             "table.html",
@@ -466,7 +509,19 @@ def create_app():
             stats=stats,
             per_branch=per_branch,
             branches=branches,
-            filters={"q": q, "only_pending": only_pending, "confs": confs, "br": br},
+            filters={
+                "q": q,
+                "only_pending": only_pending,
+                "confs": confs,
+                "br": br,
+                "page_size": page_size_raw if show_all else page_size,
+            },
+            page=page,
+            total_pages=total_pages,
+            total_filtered=total_filtered,
+            show_all=show_all,
+            table_page_sizes=TABLE_PAGE_SIZES,
+            page_url=page_url,
         )
 
     @app.get("/correction")
@@ -528,6 +583,7 @@ def create_app():
 
         current_final_id = decision["final_timel_id"] if decision else str(row.get("reconciled_timel_id", "none"))
         current_final_label = taxo_pref_label(current_final_id)
+        current_comment = decision["comment"] if decision else ""
 
         stats, per_branch = compute_stats(df_enriched)
         branches = sorted(df["first_level_timel"].dropna().unique().tolist())
@@ -545,6 +601,7 @@ def create_app():
             excluded_list=excluded_list,
             current_final_id=current_final_id,
             current_final_label=current_final_label,
+            current_comment=current_comment,
             branches=branches,
             stats=stats,
             per_branch=per_branch,
@@ -604,6 +661,7 @@ def create_app():
         excluded_list = safe_parse_list(decision["excluded_images"]) if decision else []
 
         current_final_id = decision["final_timel_id"] if decision else str(row.get("reconciled_timel_id", "none"))
+        current_comment = decision["comment"] if decision else ""
 
         return jsonify(
             {
@@ -617,6 +675,7 @@ def create_app():
                 "excluded_list": excluded_list,
                 "current_final_id": current_final_id,
                 "current_final_label": taxo_pref_label(current_final_id),
+                "current_comment": current_comment,
                 "has_decision": bool(decision),
                 "is_validated": bool(decision and decision.get("validated")),
                 "stats": stats,
@@ -679,14 +738,18 @@ def create_app():
     @app.get("/api/taxo_search")
     @api_login_required
     def api_taxo_search():
-        """JSON API: search the taxonomy (GET /api/taxo_search?q=...).
+        """JSON API: search the taxonomy
+        (GET /api/taxo_search?q=...&branch=...).
 
         :returns: JSON list of matches, as produced by
-            :func:`services.data.taxo_search`.
+            :func:`services.data.taxo_search`. ``branch`` restricts results
+            to one ``first_level_timel`` slug; omitted/empty searches every
+            branch.
         :rtype: flask.Response
         """
         q = request.args.get("q", "")
-        return jsonify(taxo_search(q, taxo_index, taxo, limit=30))
+        branch = request.args.get("branch", "")
+        return jsonify(taxo_search(q, taxo_index, taxo, limit=30, branch=branch))
 
     @app.post("/api/decision/set_final")
     @api_login_required
@@ -753,6 +816,36 @@ def create_app():
         invalidate()
         return jsonify({"ok": True})
 
+    @app.post("/api/decision/set_comment")
+    @api_login_required
+    def api_set_comment():
+        """JSON API: set a row's free-text comment (POST /api/decision/set_comment).
+
+        Expects a JSON body with ``row_id``, ``comment`` and (mirroring
+        :func:`api_set_exclusions`) the row's current ``final_timel_id`` /
+        ``excluded_images_json`` so a fresh decision row can be created
+        without clobbering them. Unlike the other decision endpoints, this
+        one does **not** touch ``validated`` — a comment is an annotator
+        note, not an edit to the annotation decision itself, so an already
+        validated row stays validated.
+
+        :returns: ``{"ok": True, "comment": ...}``.
+        :rtype: flask.Response
+        """
+        payload = request.get_json(force=True)
+        row_id = payload["row_id"]
+        final_id = payload.get("final_timel_id", "")
+        excluded = payload.get("excluded_images_json", "[]")
+        comment = payload.get("comment", "")
+
+        decisions, _ = compute_state()
+        existing = decisions.get(row_id)
+        validated = bool(existing and existing["validated"])
+
+        db_upsert_and_log(app.config["DB_PATH"], row_id, final_id, excluded, validated, "set_comment", comment=comment)
+        invalidate()
+        return jsonify({"ok": True, "comment": comment})
+
     def build_export_buffers():
         """Build the two CSV buffers for the export ZIP.
 
@@ -763,34 +856,7 @@ def create_app():
         :rtype: tuple[str, str]
         """
         decisions = db_load_all_decisions(app.config["DB_PATH"])
-        out = df.copy()
-
-        finals, excls, vals, final_labels = [], [], [], []
-        for _, r in out.iterrows():
-            k = row_key(r)
-            d = decisions.get(k)
-            if d:
-                ft = d["final_timel_id"]
-                finals.append(ft)
-                excls.append(d["excluded_images"])
-                vals.append(d["validated"])
-            else:
-                finals.append("")
-                excls.append("[]")
-                vals.append(False)
-
-            ft = finals[-1]
-            if ft == "none":
-                final_labels.append("none")
-            elif ft and ft in taxo:
-                final_labels.append(taxo[ft].get("pref_label", ""))
-            else:
-                final_labels.append("")
-
-        out["final_timel_id"] = finals
-        out["final_label"] = final_labels
-        out["excluded_images"] = excls
-        out["validated"] = vals
+        out = enrich_df_with_decisions(df, taxo, decisions)
 
         snap_buf = io.StringIO()
         out.to_csv(snap_buf, index=False, encoding="utf-8")

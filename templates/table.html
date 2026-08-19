@@ -55,7 +55,43 @@
   </details>
 
   <div class="card" data-anim="card">
-    <div class="card-title"><i class="fa-solid fa-table"></i> Résultats ({{ rows|length }})</div>
+    <div class="card-title" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+      <span>
+        <i class="fa-solid fa-table"></i> Résultats ({{ total_filtered }})
+        {% if not show_all and total_pages > 1 %}
+          <span class="muted">— page {{ page }} / {{ total_pages }}</span>
+        {% endif %}
+      </span>
+
+      <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+        <form method="get" id="pageSizeForm" style="display:flex; align-items:center; gap:8px">
+          <input type="hidden" name="q" value="{{ filters.q }}">
+          {% if filters.only_pending %}<input type="hidden" name="only_pending" value="1">{% endif %}
+          {% for c in filters.confs %}<input type="hidden" name="conf" value="{{ c }}">{% endfor %}
+          {% for b in filters.br %}<input type="hidden" name="br" value="{{ b }}">{% endfor %}
+          <label class="muted" style="display:flex; align-items:center; gap:8px">
+            Lignes par page
+            <select name="page_size" onchange="this.form.submit()">
+              {% for ps in table_page_sizes %}
+                <option value="{{ ps }}" {{ "selected" if filters.page_size == ps else "" }}>{{ ps }}</option>
+              {% endfor %}
+              <option value="all" {{ "selected" if show_all else "" }}>Tout ({{ total_filtered }})</option>
+            </select>
+          </label>
+        </form>
+
+        {% if not show_all and total_pages > 1 %}
+          <div class="pagination">
+            <a class="btn btn-ghost{{ ' btn-disabled' if page <= 1 else '' }}" href="{{ page_url(page - 1) if page > 1 else '#' }}">
+              <i class="fa-solid fa-arrow-left"></i> Précédent
+            </a>
+            <a class="btn btn-ghost{{ ' btn-disabled' if page >= total_pages else '' }}" href="{{ page_url(page + 1) if page < total_pages else '#' }}">
+              Suivant <i class="fa-solid fa-arrow-right"></i>
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
 
     <div class="table-legend">
       <div class="legend-group">
@@ -73,7 +109,8 @@
       </div>
     </div>
 
-    <div class="tablewrap">
+    <div class="tablewrap-scrolltop" id="tableScrollTop"><div id="tableScrollTopInner"></div></div>
+    <div class="tablewrap" id="tableScrollBottom">
       <table class="tbl">
         <thead>
           <tr>
@@ -87,6 +124,7 @@
             <th>Label final</th>
             <th>ID final</th>
             <th>Occurrences</th>
+            <th>Commentaire</th>
           </tr>
         </thead>
         <tbody>
@@ -131,11 +169,24 @@
                 {% endif %}
               </td>
               <td>{{ r.get("total_occ_orphan_label") }}</td>
+              <td>{{ r.get("comment") }}</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
+
+    {% if not show_all and total_pages > 1 %}
+      <div class="pagination" style="margin-top:14px; justify-content:center">
+        <a class="btn btn-ghost{{ ' btn-disabled' if page <= 1 else '' }}" href="{{ page_url(page - 1) if page > 1 else '#' }}">
+          <i class="fa-solid fa-arrow-left"></i> Précédent
+        </a>
+        <span class="muted">Page {{ page }} / {{ total_pages }}</span>
+        <a class="btn btn-ghost{{ ' btn-disabled' if page >= total_pages else '' }}" href="{{ page_url(page + 1) if page < total_pages else '#' }}">
+          Suivant <i class="fa-solid fa-arrow-right"></i>
+        </a>
+      </div>
+    {% endif %}
 
     <div class="muted" style="margin-top:10px">
       Les statuts/labels viennent de SQLite. “Exporter” génère un ZIP (snapshot + log).

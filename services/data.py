@@ -241,13 +241,14 @@ def enrich_df_with_decisions(df: pd.DataFrame, taxo: dict, decisions: dict) -> p
     :param decisions: Decisions keyed by content hash, as returned by
         :func:`services.db.db_load_all_decisions`.
     :type decisions: dict
-    :returns: A copy of ``df`` with four added columns: ``final_timel_id``,
-        ``final_label``, ``validated`` and ``excluded_images``. Rows with no
-        matching decision get ``""``/``False``/``"[]"`` defaults.
+    :returns: A copy of ``df`` with five added columns: ``final_timel_id``,
+        ``final_label``, ``validated``, ``excluded_images`` and ``comment``.
+        Rows with no matching decision get ``""``/``False``/``"[]"``/``""``
+        defaults.
     :rtype: pandas.DataFrame
     """
     out = df.copy()
-    final_id, validated, excluded, final_label = [], [], [], []
+    final_id, validated, excluded, final_label, comments = [], [], [], [], []
 
     for _, r in out.iterrows():
         k = row_key(r)
@@ -256,12 +257,14 @@ def enrich_df_with_decisions(df: pd.DataFrame, taxo: dict, decisions: dict) -> p
             fid = d["final_timel_id"]
             v = d["validated"]
             e = d["excluded_images"]
+            c = d.get("comment", "")
         else:
-            fid, v, e = "", False, "[]"
+            fid, v, e, c = "", False, "[]", ""
 
         final_id.append(fid)
         validated.append(v)
         excluded.append(e)
+        comments.append(c)
 
         if fid == "none":
             final_label.append("none")
@@ -274,28 +277,38 @@ def enrich_df_with_decisions(df: pd.DataFrame, taxo: dict, decisions: dict) -> p
     out["final_label"] = final_label
     out["validated"] = validated
     out["excluded_images"] = excluded
+    out["comment"] = comments
     return out
 
 
-def build_taxo_index(taxo: dict[str, dict[str, Any]]) -> list[tuple[str, str]]:
+def build_taxo_index(
+    taxo: dict[str, dict[str, Any]], hierarchy_branches: dict[str, str] | None = None
+) -> list[tuple[str, str, str]]:
     """Build a flat search index over the taxonomy for :func:`taxo_search`.
 
     :param taxo: Taxonomy mapping as returned by :func:`load_taxo`.
     :type taxo: dict[str, dict[str, Any]]
-    :returns: List of ``(tm_id, haystack)`` pairs, where ``haystack`` is the
-        normalized concatenation of the id, preferred label and alt labels.
-    :rtype: list[tuple[str, str]]
+    :param hierarchy_branches: Mapping as returned by :func:`load_hierarchy`,
+        used to tag each entry with its branch so :func:`taxo_search` can
+        filter by branch without a second lookup. Omitted ids get an empty
+        branch (never excluded by a branch filter, just unclassifiable).
+    :type hierarchy_branches: dict[str, str] | None
+    :returns: List of ``(tm_id, haystack, branch)`` tuples, where
+        ``haystack`` is the normalized concatenation of the id, preferred
+        label and alt labels.
+    :rtype: list[tuple[str, str, str]]
     """
+    hierarchy_branches = hierarchy_branches or {}
     idx = []
     for tm_id, obj in taxo.items():
         pref = obj.get("pref_label", "") or ""
         alts = obj.get("alt_labels", []) or []
         hay = normalize_text(" | ".join([tm_id, pref] + list(alts)))
-        idx.append((tm_id, hay))
+        idx.append((tm_id, hay, hierarchy_branches.get(tm_id, "")))
     return idx
 
 
-def taxo_search(q: str, taxo_index, taxo, limit: int = 30):
+def taxo_search(q: str, taxo_index, taxo, limit: int = 30, branch: str = ""):
     """Rank taxonomy entries matching a free-text query.
 
     Scoring favors id prefix/substring matches (when the query looks like a
@@ -306,13 +319,16 @@ def taxo_search(q: str, taxo_index, taxo, limit: int = 30):
     :param q: User-typed search query.
     :type q: str
     :param taxo_index: Search index as returned by :func:`build_taxo_index`.
-    :type taxo_index: list[tuple[str, str]]
+    :type taxo_index: list[tuple[str, str, str]]
     :param taxo: Taxonomy mapping as returned by :func:`load_taxo`, used to
         fetch each candidate's preferred label for display.
     :type taxo: dict
     :param limit: Maximum number of scored results to return (excluding the
         always-present ``"none"`` entry).
     :type limit: int
+    :param branch: Restrict results to this ``first_level_timel`` branch
+        slug, or ``""`` (the default) to search every branch.
+    :type branch: str
     :returns: A ``"none"`` entry followed by up to ``limit`` matches, each a
         dict with keys ``id`` and ``label``.
     :rtype: list[dict[str, str]]
@@ -323,7 +339,9 @@ def taxo_search(q: str, taxo_index, taxo, limit: int = 30):
 
     is_id_like = qq.startswith("tm-")
     scored = []
-    for tm_id, hay in taxo_index:
+    for tm_id, hay, tm_branch in taxo_index:
+        if branch and tm_branch != branch:
+            continue
         score = 0
         if is_id_like:
             if tm_id.startswith(qq):

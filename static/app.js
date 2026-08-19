@@ -620,6 +620,13 @@ async function loadCursor(cursor) {
     if ($("currentFinalLabel")) $("currentFinalLabel").textContent = data.current_final_label || "";
     setTmLink("uiFinalLink", data.current_final_id);
 
+    // comment
+    if ($("uiComment")) {
+        const comment = data.current_comment || "";
+        $("uiComment").value = comment;
+        $("uiComment").dataset.savedValue = comment;
+    }
+
     // images
     renderImages(data.images_list, data.excluded_list);
     updateExclCount();
@@ -654,6 +661,26 @@ async function persistExclusions() {
         toast("Erreur sauvegarde exclusions", false);
     }
     updateExclCount();
+}
+
+/**
+ * Save the active row's free-text comment (POST /api/decision/set_comment).
+ * Unlike other decision edits, this never un-validates the row.
+ *
+ * @returns {Promise<void>}
+ */
+async function persistComment() {
+    const rowId = $("rowId")?.value;
+    const finalId = $("currentFinalId")?.textContent || "";
+    const comment = $("uiComment")?.value || "";
+    const res = await postJSON("/api/decision/set_comment", {
+        row_id: rowId,
+        final_timel_id: finalId,
+        excluded_images_json: getExcludedJson(),
+        comment,
+    });
+    if (res.ok) toast("Commentaire sauvegardé ✓", true);
+    else toast("Erreur sauvegarde commentaire", false);
 }
 
 /**
@@ -854,6 +881,14 @@ function mountCorrection() {
         if (e.target.matches(".excl")) await persistExclusions();
     });
 
+    // Save the comment on blur (not on every keystroke) — focusout bubbles, blur doesn't.
+    document.addEventListener("focusout", async (e) => {
+        if (!e.target.matches("#uiComment")) return;
+        if (e.target.value === e.target.dataset.savedValue) return;
+        e.target.dataset.savedValue = e.target.value;
+        await persistComment();
+    });
+
     document.addEventListener("click", async (e) => {
         if (e.target.closest("#exclAllBtn")) {
             document.querySelectorAll(".excl").forEach(cb => cb.checked = true);
@@ -940,6 +975,7 @@ function mountCorrection() {
 
     // ---- Autocomplete ----
     const taxoInput = $("taxoSearch");
+    const taxoBranch = $("taxoSearchBranch");
     const results = $("taxoResults");
     let timer = null;
     let activeIndex = -1;
@@ -983,11 +1019,17 @@ function mountCorrection() {
                 results.innerHTML = "";
                 return;
             }
-            const r = await fetch(withPrefix(`/api/taxo_search?q=${encodeURIComponent(q)}`));
+            const branch = taxoBranch?.value || "";
+            const r = await fetch(withPrefix(`/api/taxo_search?q=${encodeURIComponent(q)}&branch=${encodeURIComponent(branch)}`));
             const data = await r.json().catch(() => []);
             renderResults(data);
         }, 140);
     };
+
+    // Re-run the current search when the branch filter changes.
+    taxoBranch?.addEventListener("change", () => {
+        if (taxoInput.value.trim()) taxoInput.oninput();
+    });
 
     taxoInput.onkeydown = (e) => {
         const els = results.querySelectorAll(".result");
@@ -1059,9 +1101,48 @@ function mountCorrection() {
     }, {passive: false});
 }
 
+// -------------------- TABLE: synced top scrollbar --------------------
+/**
+ * Mirror a horizontal scrollbar above the results table (in addition to
+ * the browser's own one below it), since with ~10 columns the table is
+ * wide enough that reaching the bottom scrollbar means scrolling past the
+ * whole page first. No-op on pages without a `#tableScrollTop` element
+ * (i.e. anywhere but /table).
+ *
+ * @returns {void}
+ */
+function wireTableScrollSync() {
+    const top = document.getElementById("tableScrollTop");
+    const topInner = document.getElementById("tableScrollTopInner");
+    const bottom = document.getElementById("tableScrollBottom");
+    const table = bottom?.querySelector("table");
+    if (!top || !topInner || !bottom || !table) return;
+
+    const syncWidth = () => {
+        topInner.style.width = `${table.scrollWidth}px`;
+    };
+    syncWidth();
+    window.addEventListener("resize", syncWidth);
+
+    let syncing = false;
+    top.addEventListener("scroll", () => {
+        if (syncing) return;
+        syncing = true;
+        bottom.scrollLeft = top.scrollLeft;
+        syncing = false;
+    });
+    bottom.addEventListener("scroll", () => {
+        if (syncing) return;
+        syncing = true;
+        top.scrollLeft = bottom.scrollLeft;
+        syncing = false;
+    });
+}
+
 // -------------------- Entry --------------------
 document.addEventListener("DOMContentLoaded", async () => {
     wireGlobalOnce();
+    wireTableScrollSync();
 
     // On the correction page: force an initial sync via the API (single
     // source of truth, avoids cursor/session drift).
@@ -1089,7 +1170,10 @@ document.addEventListener("DOMContentLoaded", async () => {
                 easing: "easeOutQuad"
             });
             anime({
-                targets: scope.querySelectorAll('.progress-bar'),
+                // Not scoped to `scope` (#mainContent): the sidebar's own
+                // progress bars (overall + per-branch) live outside it and
+                // need animating too — see base.html's <aside class="sidebar">.
+                targets: document.querySelectorAll('.progress-bar'),
                 width: (el) => `${Number(el.dataset.progress || 0)}%`,
                 duration: 700,
                 easing: "easeOutCubic",

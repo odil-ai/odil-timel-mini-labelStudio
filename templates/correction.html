@@ -138,10 +138,16 @@
                     <!-- right: search -->
                     <div>
                         <label class="muted">Recherche taxonomie</label>
-                        <div>
+                        <div class="taxo-search-wrap">
                             <div class="taxo-search-row">
                                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                                 <input id="taxoSearch" placeholder="tm-… ou un mot…" autocomplete="off">
+                                <select id="taxoSearchBranch" title="Restreindre la recherche à une branche">
+                                    <option value="">Toutes les branches</option>
+                                    {% for b in branches %}
+                                        <option value="{{ b }}">{{ BRANCH_LABELS.get(b, b) }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
 
                             <div id="taxoResults" class="results" aria-live="polite"></div>
@@ -152,6 +158,12 @@
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div style="margin-top:14px">
+                    <label class="muted" for="uiComment">Commentaire</label>
+                    <textarea id="uiComment" class="comment-box" rows="2"
+                              placeholder="Note libre sur cette annotation…">{{ current_comment }}</textarea>
                 </div>
             </div>
 
